@@ -647,20 +647,23 @@ import Main from './src/screens/Main'
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import Room from './src/screens/Room';
-
+import Toast from 'react-native-toast-message';
+import { GlobalStateProvider } from './src/context/GlobalStateProvider';
+import Chat from './src/screens/Chat';
+import Navigation from './src/Navigation';
 const Stack = createStackNavigator();
 
 const App = () => {
+
   return (
-    <NavigationContainer>
+    <GlobalStateProvider>
       <SockectProvider>
-        <Stack.Navigator>
-          <Stack.Screen name="Main" component={Main} />
-          <Stack.Screen name="Room" component={Room} />
-        </Stack.Navigator>
-        {/* <Main/> */}
+        <NavigationContainer>
+          <Navigation/>
+          <Toast />
+        </NavigationContainer>
       </SockectProvider>
-    </NavigationContainer>
+    </GlobalStateProvider>
   )
 }
 

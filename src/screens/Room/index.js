@@ -1,223 +1,301 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Text, Button, View } from 'react-native';
-import { useSocket } from '../../context/SockectProvider';
-import ReactPlayer from 'react-player'
-
-import {mediaDevices,RTCView} from 'react-native-webrtc'
-import peer from '../../services/peer'; // Assuming you have the peer service implementation
-
-
-let mediaConstraints = {
-	audio: true,
-	video: {
-		frameRate: 30,
-		facingMode: 'user'
-	}
-};
+import { FlatList, Modal, Pressable, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native'
+import React, { useCallback, useContext, useEffect, useState } from 'react'
+import colors from '../../constant/colors'
+import { VariableContext } from '../../context/GlobalStateProvider'
+import moment from 'moment'
+import { useSocket } from '../../context/SockectProvider'
+import Toast from 'react-native-toast-message'
+import { useNavigation } from '@react-navigation/native'
 
 const Room = () => {
-    const socket = useSocket()
-    const [remoteSocketId, setRemoteSocketId] = useState(null)
-    const [myStream, setMyStream] = useState(null)
-    const [remoteStream, setRemoteStream] = useState(null)
-    const [usersInRoom, setUsersInRoom] = useState({})
+    const [allRooms, setAllRooms] = useState([])
+    const [allUsers, setAllUsers] = useState([])
+    const [input, setInput] = useState('')
+    const [activeTab, setActiveTab] = useState('Users')
+    const [modalVisible, setModalVisible] = useState(false)
+    const {currentUser,removeUser} = useContext(VariableContext)
+    const socket = useSocket();
+    const navigation=useNavigation()
 
-    // const handleUserJoind=({email,id})=>{
-    //     console.log(activeUser)
-    //     setActiveUser([...activeUser,{email:email,id:id}])
-    //     console.log(`Email ${email} joined the room`)
-    //     setRemoteSocketId(id)
-    // }
-
-    const handleUserJoind=(usersInRoom)=>{
-        console.log(usersInRoom,"usersInRoom")
-        console.log(`Email ${usersInRoom?.currentUser?.email} joined the room`)
-        setRemoteSocketId(usersInRoom?.currentUser?.id)
-        setUsersInRoom(usersInRoom)
-    }
-
-    const handleCallUser=async(item)=>{
-        setRemoteSocketId(item.id)
-        console.log(item)
-        const offer = await peer.getOffer()
-        mediaDevices.getUserMedia(mediaConstraints)
-            .then(stream => {
-                socket.emit('user:call',{to:remoteSocketId,offer})
-                setMyStream(stream)
-            })
-            .catch(error => {
-                console.error('Error accessing media devices:', error);
-                // Handle the error
+    const usersHandler = useCallback(async({data}) => {
+        if (data?.error) {
+            Toast.show({
+                type: 'error',
+                text1: data?.error,
             });
-        // await console.log(navigator.mediaDevices.getUserMedia({audio:true,video:true}))
-        // const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } else {
+            const res = await data.filter(item => {
+                return item.email !=currentUser.email
+            });
+            console.log(res)
+            setAllUsers(res)
+        }
+    }, [socket]);
+    const roomsHandler = useCallback(({data}) => {
+        if (data?.error) {
+            Toast.show({
+                type: 'error',
+                text1: data?.error,
+            });
+        } else {
+            setAllRooms(data)
+        }
+        // await socket.emit('message', { email, message, createdAt:moment()});
+    }, [socket]);
+
+    useEffect(() => {
+        socket.emit('get:all:rooms');
+        socket.emit('get:all:users');
+
+        socket.on('get:all:rooms',roomsHandler);
+        socket.on('get:all:users',usersHandler);
+
+        return () => {
+            socket.off('get:all:rooms', roomsHandler);
+            socket.off('get:all:users', usersHandler);
+        };
+    }, []);
+
+    const createRoomHandler = async({input,currentUser}) => {
+        await socket.emit('create:room', { name:input, creator:currentUser, createdAt:moment()});
+        // console.log(input,currentUser,'current---User')
+        setInput('')
+    };
+
+    const navigateToRoom = async({roomName,creator}) => {
+        await socket.emit('user:joined:alert', { roomName:roomName, currentUser:currentUser.fullName});
+        navigation.navigate('Chat',{ email: currentUser.email ,roomName:roomName,type:'room',to:creator,userTo:null});
+    };
+    const navigateToChat = async({roomName,creator,userTo}) => {
+        navigation.navigate('Chat',{ email: currentUser.email ,roomName:roomName,type:'chat',to:creator,userTo:userTo});
+    };
+
+    useEffect(() => {
+        socket.on('create:room', roomsHandler);
+        return () => {
+            socket.off('create:room', roomsHandler);
+        };
+    }, [socket, roomsHandler]);
+
+    // console.log(currentUser[0].email,'allRooms==--=====')
+    
+    const generateCollectionName = (email1, email2) => {
+        const sortedEmails = [email1, email2].sort();
+        const collectionName = sortedEmails.join('_');
+        return collectionName;
+    };
+    
+    const onPressUserHandler=(email,creator,item)=>{
+        const collection=generateCollectionName(email,currentUser.email)
+        navigateToChat({roomName:collection,creator,userTo:item})
     }
-
-    // const handleCallUser=useCallback(async()=>{
-    //     const offer = await peer.getOffer()
-    //     mediaDevices.getUserMedia(mediaConstraints)
-    //     .then(stream => {
-    //         socket.emit('user:call',{to:remoteSocketId,offer})
-    //         setMyStream(stream)
-    //     })
-    //     .catch(error => {
-    //         console.error('Error accessing media devices:', error);
-    //         // Handle the error
-    //     });
-    //     // await console.log(navigator.mediaDevices.getUserMedia({audio:true,video:true}))
-    //     // const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-
-        
-
-    // },[remoteSocketId,socket])
-
-    const handleIncommingCall=useCallback(async({from,offer})=>{
-
-        setRemoteSocketId(from)
-
-        const stream = await mediaDevices.getUserMedia(mediaConstraints);
-        setMyStream(stream)
-
-        console.log(`Incomming Call`,from,offer)
-        const ans = await peer.getAnswer(offer)
-        socket.emit('call:accepted',{to:from,ans})
-    },[socket])
-
-    const sendStream=useCallback(()=>{
-        for(const track of myStream.getTracks()){
-            peer.peer.addTrack(track,myStream)
-        }
-    },[myStream])
-
-    const handleCallAccepted=useCallback(async({from,ans})=>{
-        peer.setLocalDescription(ans)
-        console.log(`Call Accepted`)
-        sendStream()
-    },[sendStream])
-
-    const handleNegoNeeded=useCallback(async() => {
-        const offer = await peer.getOffer()
-        socket.emit('peer:nego:needed',{offer , to:remoteSocketId})
-    },[remoteSocketId,socket])
-    
-    useEffect (() =>{
-        peer.peer.addEventListener ('negotiationneeded', handleNegoNeeded)
-        
-        return()=>{
-            peer.peer.removeEventListener ('negotiationneeded', handleNegoNeeded)
-        }
-    }, [handleNegoNeeded])
-    
-    const handleNegoNeededIncomming=useCallback(async({from,offer}) => {
-        const ans = await peer.getAnswer(offer)
-        socket.emit('peer:nego:done',{to:from,ans})
-    },[socket])
-
-    const handleNegoNeededFinal=useCallback(async({ans}) => {
-        await peer.setLocalDescription(ans)
-    },[])
-
-    useEffect(() => {
-      peer.peer.addEventListener('track',async (ev) =>{
-        const remotStream = ev.streams
-        console.log(`GOT TRACKES`)
-
-        setRemoteStream(remotStream[0])
-      })
-    }, [])
-
-    const usersHandler=useCallback(async(users)=>{
-        console.log(users.users,'hello')
-        setUsersInRoom(users.users)
-
-    },[])
-
-    
-
-    
-    useEffect(() => {
-        socket.on('user:joined',handleUserJoind)
-        socket.on('incomming:call',handleIncommingCall)
-        socket.on('call:accepted',handleCallAccepted)
-        socket.on('peer:nego:needed',handleNegoNeededIncomming)
-        socket.on('peer:nego:final',handleNegoNeededFinal)
-        socket.on('get:users',usersHandler)
-
-        return()=>{
-            socket.off('user:joined',handleUserJoind)
-            socket.off('incomming:call',handleIncommingCall)
-            socket.off('call:accepted',handleCallAccepted)
-            socket.off('peer:nego:needed',handleNegoNeededIncomming)
-            socket.off('peer:nego:final',handleNegoNeededFinal)
-            socket.off('get:users',usersHandler)
-
-        }
-    }, [
-        socket,
-        handleUserJoind,
-        handleIncommingCall,
-        handleCallAccepted,
-        handleNegoNeededIncomming,
-        handleNegoNeededFinal,
-        usersHandler
-    ])
-    
-
-
 
   return (
-    <View style={{margin:20}}>
-        <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>Room Page</Text>
-        <Text style={{fontSize:20,color:'black',textAlign:'center',marginVertical:10}}>{remoteSocketId ? 'Connected' : 'No one in room'}</Text>
-        {myStream && <Button title="Send Stream" onPress={sendStream} />}
-        {
-            remoteSocketId ?
-            <View>
-                <Button title="Call" onPress={handleCallUser} />
+    <View>
+        <StatusBar backgroundColor={colors.base}/>
+            <View
+                style={styles.header}
+            >
+                <Pressable 
+                    onPress={removeUser}
+                >
+                    <Text style={{padding:8,paddingHorizontal:20,borderWidth:1,borderRadius:100,borderColor:'white',fontWeight:'900'}}>Logout</Text>
+                </Pressable>
             </View>
-            :
-            <>
-            </>
-        }
-        {
-            usersInRoom?.totalUsers?
-                usersInRoom?.totalUsers?.map(item=>(
-                    <View key={item.id}>
-                        <Text style={{fontSize:16,color:'black',textAlign:'center',fontWeight:'500',marginVertical:10}}>{item.email} joined</Text>
-                        <Button title="Call" onPress={()=>handleCallUser(item)} />
-                    </View>
-                ))
-            :
-            <></>
-        }
-        {myStream &&
-            <>
-                <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>My Stream</Text>
-                <RTCView
-                    mirror={true}
-                    objectFit={'cover'}
-                    streamURL={myStream.toURL()}
-                    style={{height:200,width:200}}
-                    zOrder={0}
-                />
-            {/* <ReactPlayer playing muted height="200px" width="300px" url={myStream}/> */}
-            </>
-        }
-        {remoteStream &&
-            <>
-                <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>Remote Stream</Text>
-                <RTCView
-                    mirror={true}
-                    objectFit={'cover'}
-                    streamURL={remoteStream.toURL()} // Access the `stream` property
-                    style={{height:200,width:200}}
-                    zOrder={0}
-                />
-            {/* <ReactPlayer playing muted height="200px" width="300px" url={remoteStream}/> */}
-            </>
-        }
-    </View>
-  );
-};
+            
 
-export default Room;
+            <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingHorizontal:20}}>
+                <Pressable onPress={()=>setActiveTab('Users')} style={[styles.activeTabContainer,activeTab=='Users'?{}:{backgroundColor:colors.white}]}>
+                    <Text style={[styles.TabText,activeTab=='Users'?{}:{color:colors.base}]}>Users</Text>
+                </Pressable>
+                <Pressable onPress={()=>setActiveTab('Rooms')} style={[styles.activeTabContainer,activeTab=='Rooms'?{}:{backgroundColor:colors.white}]}>
+                    <Text style={[styles.TabText,activeTab=='Rooms'?{}:{color:colors.base}]}>Rooms</Text>
+                </Pressable>
+            </View>
+            <View style={styles.body}>
+                {
+                    activeTab=='Rooms'?
+                        allRooms?
+                            <>
+                                
+                                <Pressable onPress={()=>setModalVisible(true)}>
+                                    <Text style={[styles.roomNameText,{paddingVertical:10,textAlign:'right'}]}>+ Create Room</Text>
+                                </Pressable>
+
+                                <FlatList
+                                    data={allRooms}
+                                    numColumns={'2'}
+                                    renderItem={({item})=>(
+                                        <View style={{flex:1,paddingHorizontal:5}}>
+                                            <Pressable onPress={()=>navigateToRoom({roomName:item.roomName,creator:item.roomName})} style={[styles.roomBoxContainer]}>
+                                                <Text style={styles.roomBoxText}>Created By : {item?.creator}</Text>
+                                                <Text style={styles.roomNameText}>{item?.roomName}</Text>
+                                                <Text style={styles.roomBoxText}>Created At : {moment(item?.createdAt).format('hh:mm a')}</Text>
+                                            </Pressable>
+                                        </View>
+                                    )}
+                                />
+
+                            </>
+                        :
+                        <></>
+                        :
+                        <FlatList
+                            data={allUsers}
+                            renderItem={({item})=>(
+                                <Pressable disabled={!item.isActive} onPress={()=>onPressUserHandler(item.email,item.fullName,item)} style={[styles.roomBoxContainer,{flexDirection:'row',justifyContent:'space-between'}]}>
+                                    <Text style={styles.roomNameText}>{item.fullName}</Text>
+                                    <View style={{flexDirection:'row',alignItems:'center'}}>
+                                        <View style={{height:10,width:10, backgroundColor:item.isActive?colors.base:colors.red,borderRadius:100}}></View>
+                                        <Text style={{color:item.isActive?colors.base:colors.red,fontWeight:'900',fontSize:12,paddingLeft:10}}>{item.isActive?'Online':'Offline'}</Text>
+                                    </View>
+                                </Pressable>
+                            )}
+                        />
+                }
+            </View>
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={modalVisible}
+                onRequestClose={() => {
+                    setModalVisible(!modalVisible);
+                }}
+            >
+                <View style={styles.centeredView}>
+                    <View style={styles.modalView}>
+                        <View style={styles.inputContainer}>
+                            <Pressable onPress={()=>setModalVisible(!modalVisible)}>
+                                <Text style={[{fontSize:20,color:colors.base,marginBottom:0,fontWeight:'700'}]}>{"<="}</Text>
+                            </Pressable>
+                            <Text style={[{fontSize:25,color:colors.base,marginBottom:15,fontWeight:'700',alignSelf:'center'}]}>Create New Room</Text>
+                            <TextInput
+                                value={input}
+                                onChangeText={(e)=>setInput(e)}
+                                style={styles.input}
+                                placeholder='Enter Room Name'
+                                placeholderTextColor={colors.gray}
+                            />
+
+                            <Pressable 
+                                onPress={()=>{
+                                    createRoomHandler({input,currentUser:currentUser.email})
+                                    setModalVisible(false)
+                                }}
+                                >
+                                <Text style={styles.btnText}>Create</Text>
+                            </Pressable>
+
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+    </View>
+  )
+}
+
+export default Room
+
+const styles = StyleSheet.create({
+    header:{
+        height:50,
+        marginBottom:10,
+        backgroundColor:colors.base,
+        alignItems:'center',
+        paddingHorizontal:25,
+        flexDirection:'row',
+        justifyContent:'space-between'
+    },
+    body:{
+        justifyContent:'center',
+        padding:20,
+    },
+    roomBoxText:{
+        color:colors.gray,
+        fontSize:10
+    },
+    roomNameText:{
+        color:colors.base,
+        fontWeight:'700',
+        fontSize:15,
+        paddingVertical:15
+    },
+    TabText:{
+        color:colors.white,
+        fontWeight:'700',
+        fontSize:15,
+    },
+    activeTabContainer:{
+        backgroundColor:colors.base,
+        width:'40%',
+        borderRadius:100,
+        alignItems:'center',
+        justifyContent:'center',
+        padding:10,
+        borderWidth:1,
+        borderColor:colors.base,
+        
+    },
+    inActiveTabContainer:{
+        backgroundColor:colors.white,
+        width:'40%',
+        borderRadius:100,
+        alignItems:'center',
+        justifyContent:'center',
+        padding:10,
+        borderWidth:1,
+        borderColor:colors.base,
+    },
+    roomBoxContainer:{
+        // flexDirection:'row',
+        // justifyContent:'space-between',
+        alignItems:'center',
+        borderWidth:1,
+        borderRadius:10,
+        paddingHorizontal:10,
+        borderColor:colors.base,
+        marginTop:10
+    },
+    inputContainer:{
+
+    },
+    btnText:{
+        padding:8,
+        paddingHorizontal:20,
+        borderRadius:100,
+        fontWeight:'900',
+        backgroundColor:colors.base,
+        textAlign:'center',
+        marginTop:20
+    },
+    input:{
+        borderWidth:1,
+        color:colors.black,
+        borderColor:colors.base,
+        borderRadius:10,
+        paddingHorizontal:10,   
+        width:'100%',
+    },
+    centeredView: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 22,
+        backgroundColor:'rgba(0,0,0,.4)'
+    },
+    modalView: {
+        margin: 20,
+        width:'80%',
+        backgroundColor: 'white',
+        borderRadius: 20,
+        padding: 20,
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+})
