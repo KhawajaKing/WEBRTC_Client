@@ -22,7 +22,7 @@ let mediaConstraints = {
 };
 
 const Call = ({route}) => {
-    const { userTo,roomName} = route.params;
+    const { userTo,roomName,type} = route.params;
 
     const socket = useSocket()
     const [remoteSocketId, setRemoteSocketId] = useState(null)
@@ -30,9 +30,7 @@ const Call = ({route}) => {
     const [remoteStream, setRemoteStream] = useState(null)
     const {currentUser, removeUser  }=useContext(VariableContext)
 
-
     console.log(userTo,'UserTo')
-
 
     // const handleUserJoind=({email,id})=>{
     //     console.log(activeUser)
@@ -41,16 +39,13 @@ const Call = ({route}) => {
     //     setRemoteSocketId(id)
     // }
 
- 
-
-
-    const handleCallUser=async(item)=>{
-        setRemoteSocketId(item._id)
-        console.log(item)
+    const handleCallUser=async(id)=>{
+        console.log("====================================")
         const offer = await peer.getOffer()
         mediaDevices.getUserMedia(mediaConstraints)
             .then(stream => {
-                socket.emit('user:call',{to:remoteSocketId,offer})
+                socket.emit('user:call',{to:id,offer})
+                // socket.emit('user:call',{to:remoteSocketId,offer})
                 setMyStream(stream)
             })
             .catch(error => {
@@ -60,9 +55,6 @@ const Call = ({route}) => {
         // await console.log(navigator.mediaDevices.getUserMedia({audio:true,video:true}))
         // const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     }
-
- 
-
 
     const handleIncommingCall=useCallback(async({from,offer})=>{
 
@@ -119,10 +111,21 @@ const Call = ({route}) => {
       })
     }, [])
 
+    const getRemoteId=useCallback(async({id}) => {
+        setRemoteSocketId(id)
+        handleCallUser(id)
+        console.log(id,'setRemoteSocketId')
+    },[])
 
+    useEffect(() => {
+        socket.emit('get:socketId:by:email',{email:userTo.email});
 
+        socket.on('get:socketId:by:email',getRemoteId);
+        return()=>{
+            socket.off('get:socketId:by:email',getRemoteId)
+        }
+    }, [])
 
-    
     useEffect(() => {
         socket.on('incomming:call',handleIncommingCall)
         socket.on('call:accepted',handleCallAccepted)
@@ -144,57 +147,67 @@ const Call = ({route}) => {
         handleNegoNeededFinal,
     ])
 
+    // useEffect(() => {
+    //     handleCallUser(userTo)
+    // }, [])
+    
+
   return (
     <View style={styles.container}>
         <StatusBar backgroundColor={colors.base}/>
         
-
-
-
         {/*            Code for calling            */}
         <>
-
-                <Text style={{fontSize:20,color:'black',textAlign:'center',marginVertical:10}}>{remoteSocketId ? 'Connected' : 'No one in room'}</Text> 
-                {myStream && <Button title="Send Stream" onPress={sendStream} />}
-                {
-                    remoteSocketId ?
-                    <View>
-                        <Button title="Call" onPress={handleCallUser} />
-                    </View>
-                    :
-                    <>
-                    </>
-                }
-
-
+            <Text style={{fontSize:20,color:'black',textAlign:'center',marginVertical:10}}>{remoteSocketId ? 'Connected' : 'No one in room'}</Text> 
+            {/* {myStream && <Button title="Send Stream" onPress={sendStream} />} */}
+            {/* {
+                remoteSocketId ?
                 <View>
-                    <Button title="Call" onPress={()=>handleCallUser(userTo)} />
+                    <Button title="Call" onPress={handleCallUser} />
                 </View>
+                :
+                <>
+                </>
+            } */}
 
-                {myStream &&
-                    <>
-                        <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>My Stream</Text>
-                        <RTCView
-                            mirror={true}
-                            objectFit={'cover'}
-                            streamURL={myStream.toURL()}
-                            style={{height:200,width:200}}
-                            zOrder={0}
-                        />
-                    </>
-                }
-                {remoteStream &&
-                    <>
-                        <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>Remote Stream</Text>
-                        <RTCView
-                            mirror={true}
-                            objectFit={'cover'}
-                            streamURL={remoteStream.toURL()} // Access the `stream` property
-                            style={{height:200,width:200}}
-                            zOrder={0}
-                        />
-                    </>
-                }
+            {/* 
+            <View>
+                <Button title="Call" onPress={()=>handleCallUser(userTo)} />
+            </View> 
+            */}
+            {
+                type=="video"?
+                <>
+                    {myStream &&
+                        <>
+                            <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>My Stream</Text>
+                            <RTCView
+                                mirror={true}
+                                objectFit={'cover'}
+                                streamURL={myStream.toURL()}
+                                style={{height:200,width:200}}
+                                zOrder={0}
+                            />
+                        </>
+                    }
+                    {remoteStream &&
+                        <>
+                            <Text style={{fontSize:30,color:'black',textAlign:'center',fontWeight:'800'}}>Remote Stream</Text>
+                            <RTCView
+                                mirror={true}
+                                objectFit={'cover'}
+                                streamURL={remoteStream.toURL()} // Access the `stream` property
+                                style={{height:200,width:200}}
+                                zOrder={0}
+                            />
+                        </>
+                    }
+                </>
+                :
+                <></>
+            }
+
+                
         </>
     </View>
   );

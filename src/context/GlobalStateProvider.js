@@ -9,13 +9,14 @@ const VariableContext = createContext();
 // Create a global state provider component
 const GlobalStateProvider = ({ children }) => {
   // Initialize currentUser as null initially
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState('loading');
 
   // Define setUser function
   const setUser = async (data) => {
-    const string=JSON.stringify(data[0])
+    console.log(data,'setUser')
+    const string=JSON.stringify(data)
     await AsyncStorage.setItem('userMail', string); // Save email to AsyncStorage
-    setCurrentUser(data[0]); // Update currentUser state
+    setCurrentUser(data); // Update currentUser state
   };
 
   // Define removeUser function

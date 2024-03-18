@@ -1,4 +1,4 @@
-import { FlatList, Modal, Pressable, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native'
 import React, { useCallback, useContext, useEffect, useState } from 'react'
 import colors from '../../constant/colors'
 import { VariableContext } from '../../context/GlobalStateProvider'
@@ -6,10 +6,15 @@ import moment from 'moment'
 import { useSocket } from '../../context/SockectProvider'
 import Toast from 'react-native-toast-message'
 import { useNavigation } from '@react-navigation/native'
+import { localhost } from '../../constant/common'
+import messaging from '@react-native-firebase/messaging';
+
+
 
 const Room = () => {
     const [allRooms, setAllRooms] = useState([])
     const [allUsers, setAllUsers] = useState([])
+    const [isLoading, setIsLoading] = useState(false)
     const [input, setInput] = useState('')
     const [activeTab, setActiveTab] = useState('Users')
     const [modalVisible, setModalVisible] = useState(false)
@@ -17,51 +22,7 @@ const Room = () => {
     const socket = useSocket();
     const navigation=useNavigation()
 
-    const usersHandler = useCallback(async({data}) => {
-        if (data?.error) {
-            Toast.show({
-                type: 'error',
-                text1: data?.error,
-            });
-        } else {
-            const res = await data.filter(item => {
-                return item.email !=currentUser.email
-            });
-            console.log(res)
-            setAllUsers(res)
-        }
-    }, [socket]);
-    const roomsHandler = useCallback(({data}) => {
-        if (data?.error) {
-            Toast.show({
-                type: 'error',
-                text1: data?.error,
-            });
-        } else {
-            setAllRooms(data)
-        }
-        // await socket.emit('message', { email, message, createdAt:moment()});
-    }, [socket]);
-
-    useEffect(() => {
-        socket.emit('get:all:rooms');
-        socket.emit('get:all:users');
-
-        socket.on('get:all:rooms',roomsHandler);
-        socket.on('get:all:users',usersHandler);
-
-        return () => {
-            socket.off('get:all:rooms', roomsHandler);
-            socket.off('get:all:users', usersHandler);
-        };
-    }, []);
-
-    const createRoomHandler = async({input,currentUser}) => {
-        await socket.emit('create:room', { name:input, creator:currentUser, createdAt:moment()});
-        // console.log(input,currentUser,'current---User')
-        setInput('')
-    };
-
+   
     const navigateToRoom = async({roomName,creator}) => {
         await socket.emit('user:joined:alert', { roomName:roomName, currentUser:currentUser.fullName});
         navigation.navigate('Chat',{ email: currentUser.email ,roomName:roomName,type:'room',to:creator,userTo:null});
@@ -70,14 +31,161 @@ const Room = () => {
         navigation.navigate('Chat',{ email: currentUser.email ,roomName:roomName,type:'chat',to:creator,userTo:userTo});
     };
 
-    useEffect(() => {
-        socket.on('create:room', roomsHandler);
-        return () => {
-            socket.off('create:room', roomsHandler);
-        };
-    }, [socket, roomsHandler]);
+    //  ----------- In Used -----------
 
-    // console.log(currentUser[0].email,'allRooms==--=====')
+
+
+    const getAllRooms=async()=>{
+        fetch(`${localhost}/api/allRooms`)
+        .then(response => {
+            if (!response.ok) {
+            throw new Error('Failed to fetch data');
+            }
+            return response.json();
+        })
+        .then(data => {
+             if (data.status) {
+                setAllRooms(data.data)
+            } else {
+                Toast.show({
+                    type: 'error',
+                    text1: data.error,
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching Room data:', error);
+        });
+    }
+    const getAllUsers=async()=>{
+        fetch(`${localhost}/api/allUsers`)
+        .then(response => {
+            if (!response.ok) {
+            throw new Error('Failed to fetch data');
+            }
+            return response.json();
+        })
+        .then(data => {
+             if (data.status) {
+                const res =  data.data.filter(item => {
+                    return item.email !=currentUser.email
+                });
+                setAllUsers(res)
+
+            } else {
+                Toast.show({
+                    type: 'error',
+                    text1: data.error,
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching User data:', error);
+        });
+    }
+
+    const createRoomHandler = async({input,currentUser}) => {
+        
+
+        await fetch(`${localhost}/api/createRoom`,{
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            method: 'POST',
+            body: JSON.stringify({ roomName:input,creator:currentUser })
+        })
+        .then(response => {
+            if (!response.ok) {
+            throw new Error('Failed to fetch data ');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status) {
+                socket.emit('alert:message',{status:'refreshRooms'});
+            } else {
+                Toast.show({
+                    type: 'error',
+                    text1: data.error,
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching Creating Room data:', error);
+        });
+        setInput('')
+    };
+
+    const alertHandler = useCallback(async({data}) => {
+        // console.log(data.status)
+        if (data.status=="refresh") {
+            getAllUsers()
+        } else if (data.status=="refreshRooms") {
+            getAllRooms()
+        } else {
+        }
+    }, [socket]);
+
+    useEffect(() => {
+        socket.on('alert:message', alertHandler);
+        return () => {
+            socket.off('alert:message', alertHandler);
+        };
+    }, [socket, alertHandler]);
+
+    useEffect(() => {
+        socket.on('alert:message', alertHandler);
+        return () => {
+            socket.off('alert:message', alertHandler);
+        };
+    }, []);
+
+    useEffect(() => {
+        getAllUsers()
+        getAllRooms()
+    }, [])
+
+    const logoutHandler=async()=>{
+        // await socket.emit('set:user:offline', { email:currentUser.email});
+
+        
+
+        await fetch(`${localhost}/api/UpdateUserOfflineByEmail`,{
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            method: 'POST',
+            body: JSON.stringify({ email:currentUser.email })
+        })
+        .then(response => {
+            if (!response.ok) {
+            throw new Error('Failed to fetch data');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status) {
+                socket.emit('alert:message',{status:'refresh'});
+            }
+            
+        })
+        .catch(error => {
+            console.error('Error fetching data:', error);
+        });
+
+        removeUser()
+    }
+    
+
+    //  ----------- In Used -----------
+
+    // useEffect(() => {
+    //     socket.on('create:room', roomsHandler);
+    //     return () => {
+    //         socket.off('create:room', roomsHandler);
+    //     };
+    // }, [socket, roomsHandler]);
+
     
     const generateCollectionName = (email1, email2) => {
         const sortedEmails = [email1, email2].sort();
@@ -90,6 +198,69 @@ const Room = () => {
         navigateToChat({roomName:collection,creator,userTo:item})
     }
 
+    const handleIncommingCall=useCallback(async({from,offer})=>{
+        console.log(`Incomming Call`,from,offer)
+        // navigation.navigate('Call')
+    },[socket])
+
+
+    useEffect(() => {
+        socket.on('incomming:call',handleIncommingCall)
+        return()=>{
+            socket.off('incomming:call',handleIncommingCall)
+        }
+    }, [socket,handleIncommingCall]);
+
+    useEffect(() => {
+        socket.emit('mapping:id',{email:currentUser.email})
+    }, []);
+
+    useEffect(() => {
+        const unsubscribe = messaging().onMessage(async remoteMessage => {
+          console.log('A new FCM message arrived!', JSON.stringify(remoteMessage));
+        });
+        return unsubscribe;
+    }, []);
+
+    const checkChat=async(data)=>{
+        
+
+        data.map(item=>{
+
+        })
+
+
+        await fetch(`${localhost}/api/getChatByCollectionName`,{
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            method: 'POST',
+            body: JSON.stringify({ collectionName:collectionName })
+        })
+        .then(response => {
+            if (!response.ok) {
+            throw new Error('Failed to fetch data ');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log(data,'============= data =============')
+            if (data.data>0) {
+                return(true)
+            } else {
+                return(false)
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching Creating Room data:', error);
+        });
+
+
+
+        
+    }
+
+
   return (
     <View>
         <StatusBar backgroundColor={colors.base}/>
@@ -97,7 +268,7 @@ const Room = () => {
                 style={styles.header}
             >
                 <Pressable 
-                    onPress={removeUser}
+                    onPress={logoutHandler}
                 >
                     <Text style={{padding:8,paddingHorizontal:20,borderWidth:1,borderRadius:100,borderColor:'white',fontWeight:'900'}}>Logout</Text>
                 </Pressable>
@@ -105,6 +276,9 @@ const Room = () => {
             
 
             <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingHorizontal:20}}>
+                {/* <Pressable onPress={()=>setActiveTab('Chat')} style={[styles.activeTabContainer,activeTab=='Chat'?{}:{backgroundColor:colors.white}]}>
+                    <Text style={[styles.TabText,activeTab=='Chat'?{}:{color:colors.base}]}>Chat</Text>
+                </Pressable> */}
                 <Pressable onPress={()=>setActiveTab('Users')} style={[styles.activeTabContainer,activeTab=='Users'?{}:{backgroundColor:colors.white}]}>
                     <Text style={[styles.TabText,activeTab=='Users'?{}:{color:colors.base}]}>Users</Text>
                 </Pressable>
@@ -128,7 +302,7 @@ const Room = () => {
                                     renderItem={({item})=>(
                                         <View style={{flex:1,paddingHorizontal:5}}>
                                             <Pressable onPress={()=>navigateToRoom({roomName:item.roomName,creator:item.roomName})} style={[styles.roomBoxContainer]}>
-                                                <Text style={styles.roomBoxText}>Created By : {item?.creator}</Text>
+                                                <Text style={styles.roomBoxText}>{item?.creator==currentUser.email?"Own":`Created By : ${item?.creator}`}</Text>
                                                 <Text style={styles.roomNameText}>{item?.roomName}</Text>
                                                 <Text style={styles.roomBoxText}>Created At : {moment(item?.createdAt).format('hh:mm a')}</Text>
                                             </Pressable>
@@ -139,19 +313,40 @@ const Room = () => {
                             </>
                         :
                         <></>
-                        :
+                    :activeTab=='Users'?
                         <FlatList
                             data={allUsers}
                             renderItem={({item})=>(
-                                <Pressable disabled={!item.isActive} onPress={()=>onPressUserHandler(item.email,item.fullName,item)} style={[styles.roomBoxContainer,{flexDirection:'row',justifyContent:'space-between'}]}>
-                                    <Text style={styles.roomNameText}>{item.fullName}</Text>
+                                <Pressable disabled={!item.isOnline} onPress={()=>onPressUserHandler(item.email,item.fullName,item)} style={[styles.roomBoxContainer,{flexDirection:'row',justifyContent:'space-between',borderColor:item.isOnline?colors.base:colors.gray}]}>
+                                    <Text style={[styles.roomNameText,{color:item.isOnline?colors.base:colors.gray}]}>{item.fullName}</Text>
                                     <View style={{flexDirection:'row',alignItems:'center'}}>
-                                        <View style={{height:10,width:10, backgroundColor:item.isActive?colors.base:colors.red,borderRadius:100}}></View>
-                                        <Text style={{color:item.isActive?colors.base:colors.red,fontWeight:'900',fontSize:12,paddingLeft:10}}>{item.isActive?'Online':'Offline'}</Text>
+                                        <View style={{height:10,width:10, backgroundColor:item.isOnline?colors.base:colors.red,borderRadius:100}}></View>
+                                        <Text style={{color:item.isOnline?colors.base:colors.red,fontWeight:'900',fontSize:12,paddingLeft:10}}>{item.isOnline?'Online':'Offline'}</Text>
                                     </View>
                                 </Pressable>
                             )}
                         />
+                    :
+                    <>
+                        <FlatList
+                            data={allUsers}
+                            renderItem={({item})=>{
+                                return (
+                                    <Pressable
+                                        disabled={!item.isOnline}
+                                        onPress={() => onPressUserHandler(item.email, item.fullName, item)}
+                                        style={[styles.roomBoxContainer, { flexDirection: 'row', justifyContent: 'space-between', borderColor: item.isOnline ? colors.base : colors.gray }]}
+                                    >
+                                        <Text style={[styles.roomNameText, { color: item.isOnline ? colors.base : colors.gray }]}>{item.fullName}</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <View style={{ height: 10, width: 10, backgroundColor: item.isOnline ? colors.base : colors.red, borderRadius: 100 }}></View>
+                                            <Text style={{ color: item.isOnline ? colors.base : colors.red, fontWeight: '900', fontSize: 12, paddingLeft: 10 }}>{item.isOnline ? 'Online' : 'Offline'}</Text>
+                                        </View>
+                                    </Pressable>
+                                );
+                            }}
+                        />
+                    </>
                 }
             </View>
             <Modal

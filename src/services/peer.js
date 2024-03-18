@@ -31,17 +31,25 @@ class PeerService{
                 await this.peer.setLocalDescription(new RTCSessionDescription(ans));
                 return ans
             } catch (error) {
-                console.error("Error in Incomming Call:", error);
+                console.log("Error in Incomming Call:", error);
                 return null; // Return null or handle the error as appropriate
             }
             
         }
     }
+
     async setLocalDescription(ans){
         if (this.peer) {
             await this.peer.setRemoteDescription(new RTCSessionDescription(ans))
         }
     }
+
+    async close(){
+        if (this.peer) {
+            await this.peer.close()
+        }
+    }
+    
 
     async getOffer() {
         if (this.peer) {
@@ -50,7 +58,7 @@ class PeerService{
                 await this.peer.setLocalDescription(new RTCSessionDescription(offer));
                 return offer;
             } catch (error) {
-                console.error("Error creating offer:", error);
+                console.log("Error creating offer:", error);
                 return null; // Return null or handle the error as appropriate
             }
         }

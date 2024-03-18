@@ -1,4 +1,4 @@
-package com.client
+package com.chatApp
 
 import android.app.Application
 import com.facebook.react.PackageList

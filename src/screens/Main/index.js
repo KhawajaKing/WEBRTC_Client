@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useCallback, useContext } from 'react';
-import { Text, TextInput, Button, View, ActivityIndicator, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView } from 'react-native';
+import { Text, TextInput, Button, View, ActivityIndicator, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Alert } from 'react-native';
 import { useSocket } from '../../context/SockectProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 import { VariableContext } from '../../context/GlobalStateProvider';
 import colors from '../../constant/colors';
 import { useNavigation } from '@react-navigation/native';
+import { localhost } from '../../constant/common';
+import messaging from '@react-native-firebase/messaging';
+
 
 
 const Main = () => {
@@ -16,19 +19,108 @@ const Main = () => {
   const [fullName, setFullName] = useState('');
   const [room, setRoom] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [deviceToken, setDeviceToken] = useState('');
   const socket = useSocket();
 
   const navigation=useNavigation()
 
   const {currentUser, setUser }=useContext(VariableContext)
 
+
+  useEffect(() => {
+    getDeviceToken()
+  }, [])
+  
+  const getDeviceToken=async ()=>{
+    const token= await messaging().getToken()
+    setDeviceToken(token)
+  }
+
+  const updateUserOnlineStatus=async(email)=>{
+    await fetch(`${localhost}/api/UpdateUserOnlineByEmail`,{
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      method: 'POST',
+      body: JSON.stringify({ email:email })
+    })
+    .then(response => {
+        if (!response.ok) {
+        throw new Error('Failed to fetch data');
+        }
+        return response.json();
+    })
+    .then(data => {
+    })
+    .catch(error => {
+        console.error('Error fetching data:', error);
+    });
+  }
+
+  const updateDeviceToken=async(email)=>{
+  const token= await messaging().getToken()
+
+    console.log(email,token,"token")
+
+    await fetch(`${localhost}/api/UpdateDevicesTokenByEmail`,{
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      method: 'POST',
+      body: JSON.stringify({ email:email,token:token })
+    })
+    .then(response => {
+        if (!response.ok) {
+        throw new Error('Failed to fetch data');
+        }
+        return response.json();
+    })
+    .then(data => {
+    })
+    .catch(error => {
+      console.error('Error fetching data:', error);
+    });
+    socket.emit('alert:message',{status:'refresh'});
+  }
+
+
   const handleSubmitFormLogin = async() => {
-    console.log(loginpassword,loginEmail,'========')
 
     if (loginEmail!='' && loginpassword!='' ) {
 
-      await socket.emit('user:login', { email:loginEmail, password:loginpassword, type:'login' });
-      // navigation.navigate('Room');
+      // await socket.emit('user:login', { email:loginEmail, password:loginpassword, type:'login' });
+      await fetch(`${localhost}/api/login`, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        method: 'POST',
+        body: JSON.stringify({ email:loginEmail, password:loginpassword, type:'login' })
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json()
+      })
+      .then(data => {
+        if (data.status) {
+          updateUserOnlineStatus(data.data.email)
+          updateDeviceToken(data.data.email)
+          setUser(data.data)
+          socket.emit('alert:message',{status:'refresh'});
+
+        } else {
+          Toast.show({
+            type: 'error',
+            text1: data.error,
+          });
+        }
+      })
+      .catch(error => {
+        console.error('There was a problem with your fetch operation:', error);
+      });
+      
+
     }else{
       Toast.show({
         type: 'error',
@@ -39,8 +131,34 @@ const Main = () => {
 
   const handleSubmitFormRegister =async() => {
     if (registerEmail!='' && registerPassword!='' && fullName!='') {
-      await socket.emit('user:login', { fullName, email:registerEmail, password:registerPassword, type:'register' });
-    // navigation.navigate('Room');
+      // await socket.emit('user:login', { fullName, email:registerEmail, password:registerPassword, type:'register' });
+      fetch(`${localhost}/api/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fullName, email:registerEmail, password:registerPassword, type:'register' ,deviceToken:deviceToken})
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json()
+      })
+      .then(data => {
+        if (data.status) {
+          setUser(data.data[0])
+          socket.emit('alert:message',{status:'refresh'});
+        } else {
+          Toast.show({
+            type: 'error',
+            text1: data.error,
+          });
+        }
+      })
+      .catch(error => {
+        console.error('There was a problem with your fetch operation:', error);
+      });
     }else{
       Toast.show({
         type: 'error',
@@ -49,44 +167,6 @@ const Main = () => {
     }
   }
   
-  const handleJoinRoom = useCallback(async({data}) => {
-
-    console.log(data,'========')
-    if (data?.error) {
-      Toast.show({
-        type: 'error',
-        text1: data?.error,
-      });
-    } else {
-      await setUser(data)
-    }
-  }, [navigation]);
-
-  useEffect(() => {
-    setRoom("200")
-    socket.on('user:login', handleJoinRoom);
-    return () => {
-      socket.off('user:login');
-    };
-  }, [socket, handleJoinRoom]);
-
-  const checkUser=async()=>{
-    setIsLoading(true)
-    // const userMail= await AsyncStorage.getItem('userMail')
-    console.log(currentUser)
-    if(currentUser){
-      // navigation.replace('Room',{ email:userMail })
-      navigation.reset({
-        routes: [{ name: 'Room', params: { email: currentUser } }],
-      });
-      setIsLoading(false)
-    }
-    setIsLoading(false)
-  }
-
-  useEffect(() => {
-    checkUser()
-  }, []);
 
   if (isLoading) {
     <View style={{flex:1,justifyContent:'center',alignItems:'center'}}>
@@ -113,6 +193,7 @@ const Main = () => {
             <TextInput
               placeholderTextColor={'gray'}
               value={loginpassword}
+              keyboardType='number-pad'
               placeholder='Enter Password'
               onChangeText={(text) => setLoginPassword(text)}
               style={styles.input}
@@ -143,6 +224,7 @@ const Main = () => {
             <TextInput
               placeholderTextColor={'gray'}
               value={registerPassword}
+              keyboardType='number-pad'
               placeholder='Enter Password'
               onChangeText={(text) => setRegisterPassword(text)}
               style={styles.input}
@@ -153,8 +235,6 @@ const Main = () => {
           </View>
         </View>
       </KeyboardAvoidingView>
-
-
     </ScrollView>
   );
 };

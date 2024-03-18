@@ -1,16 +1,15 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Text, Button, View, TextInput, Pressable,StyleSheet, FlatList, StatusBar } from 'react-native';
+import { Text, Button, View, TextInput, Pressable,StyleSheet, FlatList, StatusBar, Modal, Image } from 'react-native';
 import { useSocket } from '../../context/SockectProvider';
-import ReactPlayer from 'react-player'
-
-import {mediaDevices,RTCView} from 'react-native-webrtc'
-import peer from '../../services/peer'; // Assuming you have the peer service implementation
 import Toast from 'react-native-toast-message';
 import moment from 'moment';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import colors from '../../constant/colors';
 import { VariableContext } from '../../context/GlobalStateProvider';
+import { localhost } from '../../constant/common';
+import { launchImageLibrary } from 'react-native-image-picker'
+import { uploadImageToImgur } from '../../api';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 
 let mediaConstraints = {
@@ -25,168 +24,24 @@ const Chat = ({route}) => {
     const { email ,roomName,type,to,userTo} = route.params;
 
     const socket = useSocket()
-    const [remoteSocketId, setRemoteSocketId] = useState(null)
-    const [myStream, setMyStream] = useState(null)
-    const [remoteStream, setRemoteStream] = useState(null)
-    const [usersInRoom, setUsersInRoom] = useState({})
     const [message, setMessage] = useState('')
     const [allMessages, setAllMessages] = useState([])
+    const [modalVisible, setModalVisible] = useState(false)
+    const [imageURL, setImageURL] = useState('')
     const navigation=useNavigation()
     const flatListRef = useRef();
     const isFocused=useIsFocused()
     const {currentUser, removeUser  }=useContext(VariableContext)
 
-
-    console.log(type,'currentUser')
-
-
-    // const handleUserJoind=({email,id})=>{
-    //     console.log(activeUser)
-    //     setActiveUser([...activeUser,{email:email,id:id}])
-    //     console.log(`Email ${email} joined the room`)
-    //     setRemoteSocketId(id)
-    // }
-
-    const removeUserByEmail=(data, emailToRemove)=>{
-        return {
-          ...data,
-          totalUsers: data.totalUsers.filter(user => user.email !== emailToRemove)
-        };
-    }
-
-    const handleUserJoind=async(usersInRoom)=>{
-        console.log(usersInRoom,"usersInRoom")
-        console.log(`Email ${usersInRoom?.currentUser?.email} joined the room`)
-        setRemoteSocketId(usersInRoom?.currentUser?.id)
-        const filteredData=await removeUserByEmail(usersInRoom, email);
-        setUsersInRoom(filteredData)
-    }
-
-    const handleCallUser=async(item)=>{
-        setRemoteSocketId(item.id)
-        console.log(item)
-        const offer = await peer.getOffer()
-        mediaDevices.getUserMedia(mediaConstraints)
-            .then(stream => {
-                socket.emit('user:call',{to:remoteSocketId,offer})
-                setMyStream(stream)
-            })
-            .catch(error => {
-                console.error('Error accessing media devices:', error);
-                // Handle the error
-            });
-        // await console.log(navigator.mediaDevices.getUserMedia({audio:true,video:true}))
-        // const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    }
-
-    // const handleCallUser=useCallback(async()=>{
-    //     const offer = await peer.getOffer()
-    //     mediaDevices.getUserMedia(mediaConstraints)
-    //     .then(stream => {
-    //         socket.emit('user:call',{to:remoteSocketId,offer})
-    //         setMyStream(stream)
-    //     })
-    //     .catch(error => {
-    //         console.error('Error accessing media devices:', error);
-    //         // Handle the error
-    //     });
-    //     // await console.log(navigator.mediaDevices.getUserMedia({audio:true,video:true}))
-    //     // const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-
-        
-
-    // },[remoteSocketId,socket])
-
-    const handleIncommingCall=useCallback(async({from,offer})=>{
-
-        setRemoteSocketId(from)
-
-        const stream = await mediaDevices.getUserMedia(mediaConstraints);
-        setMyStream(stream)
-
-        console.log(`Incomming Call`,from,offer)
-        const ans = await peer.getAnswer(offer)
-        socket.emit('call:accepted',{to:from,ans})
-    },[socket])
-
-    const sendStream=useCallback(()=>{
-        for(const track of myStream.getTracks()){
-            peer.peer.addTrack(track,myStream)
-        }
-    },[myStream])
-
-    const handleCallAccepted=useCallback(async({from,ans})=>{
-        peer.setLocalDescription(ans)
-        console.log(`Call Accepted`)
-        sendStream()
-    },[sendStream])
-
-    const handleNegoNeeded=useCallback(async() => {
-        const offer = await peer.getOffer()
-        socket.emit('peer:nego:needed',{offer , to:remoteSocketId})
-    },[remoteSocketId,socket])
-    
-    useEffect (() =>{
-        peer.peer.addEventListener ('negotiationneeded', handleNegoNeeded)
-        
-        return()=>{
-            peer.peer.removeEventListener ('negotiationneeded', handleNegoNeeded)
-        }
-    }, [handleNegoNeeded])
-    
-    const handleNegoNeededIncomming=useCallback(async({from,offer}) => {
-        const ans = await peer.getAnswer(offer)
-        socket.emit('peer:nego:done',{to:from,ans})
-    },[socket])
-
-    const handleNegoNeededFinal=useCallback(async({ans}) => {
-        await peer.setLocalDescription(ans)
-    },[])
-
-    useEffect(() => {
-      peer.peer.addEventListener('track',async (ev) =>{
-        const remotStream = ev.streams
-        console.log(`GOT TRACKES`)
-
-        setRemoteStream(remotStream[0])
-      })
-    }, [])
-
-    const usersHandler=async(users)=>{
-        console.log(users.users,'hello')
-        
-        console.log(email,'hello')
-        const filteredData=await removeUserByEmail(users.users, email);
-        await setUsersInRoom(filteredData)
-        console.log(usersInRoom,'filted hello')
-        
-    }
-
-    const showToast = (text) => {
-        console.log(text,'-----')
-        Toast.show({
-          type: 'success',
-          text1: text,
-        //   text2: `${JSON.stringify(text)}`,
-        });
-    }
-    
-    const handleJoinRoom = useCallback((data) => {
-        // const { email, room } = data;
-        console.log(data,'recevied message')
-    }, []);
-    
-    const handleAlertRoom = useCallback((data) => {
-        console.log(data)
-        showToast(data)
-        console.log(data,'recevied alert')
-    }, []);
-
-
+    console.log(userTo,'userTo')
 
     const sendMessageHandler = useCallback(async(message) => {
-        await socket.emit('message', { roomName,email, message, createdAt:moment()});
+        if (message || imageURL) {
+            await socket.emit('message', { roomName,email, message, createdAt:moment(),sender:currentUser,to:userTo,image:imageURL});
+        }
+        setModalVisible(false)
         setMessage('')
+        setImageURL(null)
     }, [socket]);
 
     const MessageHandler = useCallback(({data}) => {
@@ -194,85 +49,78 @@ const Chat = ({route}) => {
         // await socket.emit('message', { email, message, createdAt:moment()});
     }, [socket,navigation]);
 
-    
-    useEffect(() => {
-        socket.on('get:all:message', MessageHandler);
-        return () => {
-            socket.off('get:all:message', MessageHandler);
-        };
-    }, []);
-
-
-    const handleSocketIdByEmail = useCallback(({socketId}) => {
-        // console.log(socketId)
-        console.log(socketId,'recevied alert')
-    }, [socket]);
-
-
     useEffect(() => {
         socket.on('message', MessageHandler);
-        socket.on('user:joined:alert', handleAlertRoom);
-        socket.on('get:socket:id:by:email', handleSocketIdByEmail);
         return () => {
             socket.off('message', MessageHandler);
-            socket.off('user:joined:alert', handleAlertRoom);
-            socket.off('get:socket:id:by:email', handleSocketIdByEmail);
         };
-    }, [socket, MessageHandler,handleAlertRoom,handleSocketIdByEmail]);
+    }, [socket, MessageHandler]);
 
+    const getAllChat = async() => {
+        
+        
+        await fetch(`${localhost}/api/getChatFristTime`,{
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            method: 'POST',
+            body: JSON.stringify({ roomName:roomName })
+        })
+        .then(response => {
+            if (!response.ok) {
+            throw new Error('Failed to fetch data ');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log(data,"=============== data ===============")
+            if (data.status) {
+                setAllMessages(data.data)
+                // socket.emit('alert:message',{status:'refreshRooms'});
+            } else {
+                Toast.show({
+                    type: 'error',
+                    text1: data.error,
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching Creating Room data:', error);
+        });
+        // await socket.emit('message', { email, message, createdAt:moment()});
+    }
 
     useEffect(() => {
-        socket.emit('get:all:message',roomName);
-
-        socket.on('get:all:message',MessageHandler);
-
-        return () => {
-            socket.off('get:all:message', MessageHandler);
-        };
+        getAllChat()
     }, []);
-    
-    useEffect(() => {
-        socket.on('user:joined',handleUserJoind)
-        socket.on('incomming:call',handleIncommingCall)
-        socket.on('call:accepted',handleCallAccepted)
-        socket.on('peer:nego:needed',handleNegoNeededIncomming)
-        socket.on('peer:nego:final',handleNegoNeededFinal)
-        socket.on('get:users',usersHandler)
-
-        return()=>{
-            socket.off('user:joined',handleUserJoind)
-            socket.off('incomming:call',handleIncommingCall)
-            socket.off('call:accepted',handleCallAccepted)
-            socket.off('peer:nego:needed',handleNegoNeededIncomming)
-            socket.off('peer:nego:final',handleNegoNeededFinal)
-            socket.off('get:users',usersHandler)
-
-        }
-    }, [
-        socket,
-        handleUserJoind,
-        handleIncommingCall,
-        handleCallAccepted,
-        handleNegoNeededIncomming,
-        handleNegoNeededFinal,
-        usersHandler
-    ])
-
-    // user:joined:alert
 
     const handleContentSizeChange = () => {
         flatListRef.current.scrollToEnd({ animated: true });
     };
 
-
-
-    const onCallHandler = useCallback(async() => {
+    const onCallHandler = async(type) => {
         console.log(userTo.email,'userTo.email')
         //  socketId
-        await socket.emit('get:socket:id:by:email', { email:userTo.email});
         // setMessage('')
-        // navigation.navigate('Call',{userTo:userTo,roomName:roomName});
-    }, [socket]);
+        navigation.navigate('Call',{userTo:userTo,roomName:roomName,type:type});
+    };
+
+
+    const photoChoose = async() => {
+        const result = await launchImageLibrary({
+            maxHeight: 400,
+            maxWidth:  400,
+            quality: .3,
+            includeBase64: true
+        });    
+        // setRecipyImage(result.assets[0])
+        let imageResponse = await uploadImageToImgur(result.assets[0].base64)
+        imageResponse = JSON.parse(imageResponse)
+        await setImageURL(imageResponse?.data?.link)
+        console.log(result,"result")
+        console.log(imageResponse?.data?.link,"imageResponse?.data?.link")
+        setModalVisible(true)
+      }
 
 
   return (
@@ -298,11 +146,22 @@ const Chat = ({route}) => {
             </View>
             {
                 type=="chat"?
+                <View style={{flexDirection:'row'}}>
                     <Pressable 
-                        onPress={onCallHandler}
+                        onPress={()=>onCallHandler("voice")}
+                        style={{marginRight:20,padding:5}}
                     >
-                        <Text style={{padding:8,paddingHorizontal:20,borderWidth:1,borderRadius:100,borderColor:'white',fontWeight:'900',textAlign:'center',alignSelf:'flex-end'}}>Call</Text>
+                        <Ionicons name="call" size={20} color={colors.white}/>
                     </Pressable>
+
+                    <Pressable 
+                        onPress={()=>onCallHandler("video")}
+                        style={{padding:5}}
+                    >
+                        <Ionicons name="videocam" size={20} color={colors.white}/>
+                    </Pressable>
+
+                </View>
                 :
                 <></>
             }
@@ -318,7 +177,23 @@ const Chat = ({route}) => {
                     renderItem={({item})=>(
                         <View style={[styles.messageBoxContainer,item.sender==email?styles.messageBoxContainerMine:{}]}>
                             <Text style={[styles.messageSecondaryTitle,item.sender==email?styles.messageSecondaryTitleMine:{}]}>{item.sender}</Text>
-                            <Text  style={[styles.message,item.sender==email?styles.messageMine:{}]}>{item.message}</Text>
+                            {
+                                item.image?
+                                <>
+                                    <Image source={{uri:item.image}} style={{height:250,width:"100%",borderRadius:10,marginTop:10}}/>
+                                    {
+                                        item.message?
+                                            <Text  style={[styles.message,item.sender==email?styles.messageMine:{}]}>{item.message}</Text>
+                                        :
+                                        <></>
+
+                                    }
+                                </>
+                                :
+                                <>
+                                    <Text  style={[styles.message,item.sender==email?styles.messageMine:{}]}>{item.message}</Text>
+                                </>
+                            }
                             <Text  style={[styles.messageSecondaryTitle,item.sender==email?styles.messageSecondaryTitleMine:{},{alignSelf:'flex-end'}]}>{moment(item.createdAt).format("hh : mm a")}</Text>
                         </View>
                     )}
@@ -335,13 +210,55 @@ const Chat = ({route}) => {
                 onChangeText={(e)=>setMessage(e)}
                 style={styles.messageInput}
             />
+
+            <Pressable 
+                style={styles.sendBTN}
+                onPress={photoChoose}
+            >
+                <Ionicons name="camera" size={20} color={colors.white}/>
+            </Pressable>
+
             <Pressable 
                 style={styles.sendBTN}
                 onPress={()=>{sendMessageHandler(message)}}
             >
-                <Text style={{fontSize:38,color:'white',alignSelf:'center'}}>&#x27A1;</Text>
+                <Ionicons name="send" size={20} color={colors.white}/>
+                {/* <Text style={{fontSize:38,color:'white',alignSelf:'center'}}>&#x27A1;</Text> */}
             </Pressable>
         </View>
+
+
+
+        <Modal
+            animationType="slide"
+            transparent={true}
+            visible={modalVisible}
+            onRequestClose={() => {
+                setModalVisible(!modalVisible);
+            }}
+        >
+            <View style={styles.centeredView}>
+                <View style={styles.modalView}>
+                    <Image source={{uri:imageURL}} style={{height:250,width:"100%",borderRadius:10}}/>
+                    <View style={[styles.row,{backgroundColor:'white'}]}>
+                        <TextInput
+                            value={message}
+                            placeholder='Messgae'
+                            placeholderTextColor={'gray'}
+                            onChangeText={(e)=>setMessage(e)}
+                            style={styles.messageInput}
+                        />
+
+                        <Pressable 
+                            style={styles.sendBTN}
+                            onPress={()=>{sendMessageHandler(message)}}
+                        >
+                            <Ionicons name="send" size={20} color={colors.white}/>
+                        </Pressable>
+                    </View>
+                </View>
+            </View>
+        </Modal>
 
 
 
@@ -428,12 +345,14 @@ const styles = StyleSheet.create({
         backgroundColor:'white'
     },
     sendBTN:{
-        height:50,
-        width:50,
+        height:40,
+        width:40,
         marginRight:8,
         borderRadius:100,
         elevation:3,
-        backgroundColor:colors.base
+        backgroundColor:colors.base,
+        justifyContent:'center',
+        alignItems:'center'
     },
     messageBoxContainer:{
         borderWidth:1,
@@ -474,5 +393,27 @@ const styles = StyleSheet.create({
         fontWeight:'400',
         fontSize:12,
         color:'gray'
-    }
+    },
+    centeredView: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 22,
+        backgroundColor:'rgba(0,0,0,.6)'
+    },
+    modalView: {
+        margin: 20,
+        width:'80%',
+        backgroundColor: 'white',
+        borderRadius: 20,
+        padding: 20,
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+    },
 })

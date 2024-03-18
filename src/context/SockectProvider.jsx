@@ -1,5 +1,6 @@
 import React,{createContext,useContext,useMemo, useState} from 'react'
 import {io} from 'socket.io-client'
+import { localhost } from '../constant/common'
 const SocketContext=createContext(null)
 
 export const useSocket=()=>{
@@ -10,7 +11,7 @@ export const useSocket=()=>{
 
 export const SockectProvider=(props)=>{
 
-    const socket =useMemo(()=>io('http://192.168.0.112:8000'),[])
+    const socket =useMemo(()=>io(localhost),[])
 
     return(
         <SocketContext.Provider value={socket}>
@@ -21,4 +22,4 @@ export const SockectProvider=(props)=>{
 
 // 192.168.100.7  M
 
-// 192.168.0.112  O
+// 192.168.0.102  O
