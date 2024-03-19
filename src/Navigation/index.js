@@ -9,6 +9,9 @@ import { ActivityIndicator, View } from "react-native";
 import colors from "../constant/colors";
 import { useSocket } from "../context/SockectProvider";
 import {PermissionsAndroid} from 'react-native';
+import IncomingCall from "../screens/IncomingCall";
+import OutgoingCall from "../screens/OutgoingCall";
+import MainCall from "../screens/MainCall";
 
 PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
 
@@ -54,6 +57,9 @@ export default function Navigation() {
                 <Stack.Screen name="Room" component={Room} />
                 <Stack.Screen name="Chat" component={Chat} />
                 <Stack.Screen name="Call" component={Call} />
+                <Stack.Screen name="IncomingCall" component={IncomingCall} />
+                <Stack.Screen name="OutgoingCall" component={OutgoingCall} />
+                <Stack.Screen name="MainCall" component={MainCall} />
             </Stack.Navigator>
         )
     } 

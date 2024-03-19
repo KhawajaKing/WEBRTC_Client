@@ -35,14 +35,14 @@ const Chat = ({route}) => {
 
     console.log(userTo,'userTo')
 
-    const sendMessageHandler = useCallback(async(message) => {
+    const sendMessageHandler = async(message) => {
         if (message || imageURL) {
             await socket.emit('message', { roomName,email, message, createdAt:moment(),sender:currentUser,to:userTo,image:imageURL});
         }
         setModalVisible(false)
         setMessage('')
         setImageURL(null)
-    }, [socket]);
+    }
 
     const MessageHandler = useCallback(({data}) => {
         setAllMessages(data)
@@ -73,7 +73,6 @@ const Chat = ({route}) => {
             return response.json();
         })
         .then(data => {
-            console.log(data,"=============== data ===============")
             if (data.status) {
                 setAllMessages(data.data)
                 // socket.emit('alert:message',{status:'refreshRooms'});
@@ -102,7 +101,7 @@ const Chat = ({route}) => {
         console.log(userTo.email,'userTo.email')
         //  socketId
         // setMessage('')
-        navigation.navigate('Call',{userTo:userTo,roomName:roomName,type:type});
+        navigation.navigate('OutgoingCall',{userTo:userTo,type:type});
     };
 
 
@@ -148,14 +147,14 @@ const Chat = ({route}) => {
                 type=="chat"?
                 <View style={{flexDirection:'row'}}>
                     <Pressable 
-                        onPress={()=>onCallHandler("voice")}
+                        onPress={()=>onCallHandler("voiceCall")}
                         style={{marginRight:20,padding:5}}
                     >
                         <Ionicons name="call" size={20} color={colors.white}/>
                     </Pressable>
 
                     <Pressable 
-                        onPress={()=>onCallHandler("video")}
+                        onPress={()=>onCallHandler("videoCall")}
                         style={{padding:5}}
                     >
                         <Ionicons name="videocam" size={20} color={colors.white}/>
@@ -178,9 +177,9 @@ const Chat = ({route}) => {
                         <View style={[styles.messageBoxContainer,item.sender==email?styles.messageBoxContainerMine:{}]}>
                             <Text style={[styles.messageSecondaryTitle,item.sender==email?styles.messageSecondaryTitleMine:{}]}>{item.sender}</Text>
                             {
-                                item.image?
+                                item?.image?
                                 <>
-                                    <Image source={{uri:item.image}} style={{height:250,width:"100%",borderRadius:10,marginTop:10}}/>
+                                    <Image source={{uri:item?.image}} style={{height:250,width:"100%",borderRadius:10,marginTop:10,backgroundColor:colors.gray}}/>
                                     {
                                         item.message?
                                             <Text  style={[styles.message,item.sender==email?styles.messageMine:{}]}>{item.message}</Text>
@@ -240,17 +239,17 @@ const Chat = ({route}) => {
             <View style={styles.centeredView}>
                 <View style={styles.modalView}>
                     <Image source={{uri:imageURL}} style={{height:250,width:"100%",borderRadius:10}}/>
-                    <View style={[styles.row,{backgroundColor:'white'}]}>
-                        <TextInput
+                    <View style={[styles.row,{justifyContent:'flex-end',marginTop:15}]}>
+                        {/* <TextInput
                             value={message}
                             placeholder='Messgae'
                             placeholderTextColor={'gray'}
                             onChangeText={(e)=>setMessage(e)}
                             style={styles.messageInput}
-                        />
+                        /> */}
 
                         <Pressable 
-                            style={styles.sendBTN}
+                            style={[styles.sendBTN]}
                             onPress={()=>{sendMessageHandler(message)}}
                         >
                             <Ionicons name="send" size={20} color={colors.white}/>

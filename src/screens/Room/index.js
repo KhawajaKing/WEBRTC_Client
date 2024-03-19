@@ -8,6 +8,7 @@ import Toast from 'react-native-toast-message'
 import { useNavigation } from '@react-navigation/native'
 import { localhost } from '../../constant/common'
 import messaging from '@react-native-firebase/messaging';
+import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
 
 
 
@@ -198,9 +199,9 @@ const Room = () => {
         navigateToChat({roomName:collection,creator,userTo:item})
     }
 
-    const handleIncommingCall=useCallback(async({from,offer})=>{
+    const handleIncommingCall=useCallback(async({from,offer,sender,type})=>{
         console.log(`Incomming Call`,from,offer)
-        // navigation.navigate('Call')
+        navigation.navigate('IncomingCall',{from,offer,sender,type})
     },[socket])
 
 
@@ -215,12 +216,52 @@ const Room = () => {
         socket.emit('mapping:id',{email:currentUser.email})
     }, []);
 
+
+
+
+    async function onDisplayNotification (remoteMessage) {
+
+
+        console.log(remoteMessage.notification,"messageData.notification")
+        // Request permissions (required for iOS)
+        await notifee.requestPermission()
+    
+        // Create a channel (required for Android)
+        const channelId = await notifee.createChannel({
+          id: '1212',
+          name: 'cha',
+          importance:AndroidImportance.HIGH
+        });
+    
+        // Display a notification
+        await notifee.displayNotification({
+        //   title: "tile",
+        //   body: "body",
+          title: remoteMessage.notification.title,
+          body: remoteMessage.notification.body,
+          android: {
+            channelId, // optional, defaults to 'ic_launcher'.
+            importance:AndroidImportance.HIGH,
+            visibility:AndroidVisibility.PUBLIC,
+            // pressAction is needed if you want the notification to open the app when pressed
+            pressAction: {
+              id: 'default',
+            },
+          },
+        });
+    }
+
+
+
     useEffect(() => {
         const unsubscribe = messaging().onMessage(async remoteMessage => {
           console.log('A new FCM message arrived!', JSON.stringify(remoteMessage));
+          onDisplayNotification(remoteMessage)
         });
         return unsubscribe;
     }, []);
+
+
 
     const checkChat=async(data)=>{
         
@@ -314,18 +355,23 @@ const Room = () => {
                         :
                         <></>
                     :activeTab=='Users'?
-                        <FlatList
-                            data={allUsers}
-                            renderItem={({item})=>(
-                                <Pressable disabled={!item.isOnline} onPress={()=>onPressUserHandler(item.email,item.fullName,item)} style={[styles.roomBoxContainer,{flexDirection:'row',justifyContent:'space-between',borderColor:item.isOnline?colors.base:colors.gray}]}>
-                                    <Text style={[styles.roomNameText,{color:item.isOnline?colors.base:colors.gray}]}>{item.fullName}</Text>
-                                    <View style={{flexDirection:'row',alignItems:'center'}}>
-                                        <View style={{height:10,width:10, backgroundColor:item.isOnline?colors.base:colors.red,borderRadius:100}}></View>
-                                        <Text style={{color:item.isOnline?colors.base:colors.red,fontWeight:'900',fontSize:12,paddingLeft:10}}>{item.isOnline?'Online':'Offline'}</Text>
-                                    </View>
-                                </Pressable>
-                            )}
-                        />
+                        allUsers.length>0?
+                            <FlatList
+                                data={allUsers}
+                                renderItem={({item})=>(
+                                    <Pressable disabled={!item.isOnline} onPress={()=>onPressUserHandler(item.email,item.fullName,item)} style={[styles.roomBoxContainer,{flexDirection:'row',justifyContent:'space-between',borderColor:item.isOnline?colors.base:colors.gray}]}>
+                                        <Text style={[styles.roomNameText,{color:item.isOnline?colors.base:colors.gray}]}>{item.fullName}</Text>
+                                        <View style={{flexDirection:'row',alignItems:'center'}}>
+                                            <View style={{height:10,width:10, backgroundColor:item.isOnline?colors.base:colors.red,borderRadius:100}}></View>
+                                            <Text style={{color:item.isOnline?colors.base:colors.red,fontWeight:'900',fontSize:12,paddingLeft:10}}>{item.isOnline?'Online':'Offline'}</Text>
+                                        </View>
+                                    </Pressable>
+                                )}
+                            />
+                        :
+                        <View style={{alignItems:'center'}}>
+                            <Text style={[styles.roomNameText, { color:colors.gray }]}>Nobody is here..!</Text>
+                        </View>
                     :
                     <>
                         <FlatList

@@ -10,7 +10,9 @@ export default{
     tint:"#F58634",
     yellow:"#FFCC29",
     red:'#E53631',
+    green:'#4AA22B',
 
     gray:'#78797E',
+    darkGray:'#171717',
     lightGray:'#CBCDCA'
 }

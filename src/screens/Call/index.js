@@ -22,7 +22,7 @@ let mediaConstraints = {
 };
 
 const Call = ({route}) => {
-    const { userTo,roomName,type} = route.params;
+    const { userTo,type} = route.params;
 
     const socket = useSocket()
     const [remoteSocketId, setRemoteSocketId] = useState(null)
@@ -80,6 +80,8 @@ const Call = ({route}) => {
         sendStream()
     },[sendStream])
 
+
+    
     const handleNegoNeeded=useCallback(async() => {
         const offer = await peer.getOffer()
         socket.emit('peer:nego:needed',{offer , to:remoteSocketId})
